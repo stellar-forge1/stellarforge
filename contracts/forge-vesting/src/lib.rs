@@ -2477,4 +2477,34 @@ mod tests {
         let result = client.try_unpause();
         assert_eq!(result, Err(Ok(VestingError::NotPaused)));
     }
+
+    /// cancel_and_claim() must return VestingError::Paused when the schedule is paused.
+    ///
+    /// Verifies the correct error variant is returned — Paused is a state condition,
+    /// not an authorization failure (CommonError::Unauthorized).
+    #[test]
+    fn test_cancel_and_claim_while_paused_returns_paused() {
+        let (env, contract_id, token, beneficiary, admin) = setup();
+        let client = ForgeVestingClient::new(&env, &contract_id);
+        client.initialize(&token, &beneficiary, &admin, &1_000_000, &100, &1000);
+        client.pause();
+
+        let result = client.try_cancel_and_claim();
+        assert_eq!(result, Err(Ok(VestingError::Paused)));
+    }
+
+    /// pause() must return VestingError::Paused when the schedule is already paused.
+    ///
+    /// Verifies the correct error variant is returned for the already-paused case.
+    #[test]
+    fn test_pause_when_already_paused_returns_paused() {
+        let (env, contract_id, token, beneficiary, admin) = setup();
+        let client = ForgeVestingClient::new(&env, &contract_id);
+        client.initialize(&token, &beneficiary, &admin, &1_000_000, &100, &1000);
+        client.pause();
+
+        // Second pause must fail with Paused, not Unauthorized
+        let result = client.try_pause();
+        assert_eq!(result, Err(Ok(VestingError::Paused)));
+    }
 }
