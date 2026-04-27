@@ -88,6 +88,14 @@ assert_eq!(factory.get_schedule_count(), 2);
 
 ---
 
+## Storage Strategy
+
+`ScheduleCount` is stored in **persistent** storage (not instance storage). This is critical: if `ScheduleCount` were in instance storage and that entry expired, the counter would reset to 0 and new schedules would silently overwrite existing ones in persistent storage, permanently destroying beneficiary vesting data.
+
+All per-schedule entries (`Schedule(id)`, `Claimed(id)`, `VestedAtCancel(id)`) are also stored in persistent storage and have their TTL extended on every write.
+
+---
+
 ## Known Limitations
 
 - **No pause/unpause** — schedules cannot be temporarily frozen. Use `forge-vesting` if pause support is required.
