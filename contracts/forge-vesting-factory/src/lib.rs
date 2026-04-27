@@ -393,6 +393,14 @@ impl ForgeVestingFactory {
     /// vested = total_amount × elapsed / duration
     /// ```
     ///
+    /// # Note on cancellation
+    ///
+    /// This function must **not** be called after a schedule is cancelled to
+    /// determine the historical vested amount. Instead, the vested amount at
+    /// cancel time is stored in `DataKey::VestedAtCancel(id)` and read by
+    /// `get_status()`. This mirrors the behaviour of forge-vesting which stores
+    /// `VestedAtCancel` to avoid returning 0 for cancelled schedules.
+    ///
     /// # Returns
     ///
     /// The total amount of tokens that have vested (not necessarily claimed) up to `now`.
