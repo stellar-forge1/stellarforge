@@ -88,6 +88,22 @@ assert_eq!(factory.get_schedule_count(), 2);
 
 ---
 
+## Storage TTL Strategy
+
+All persistent storage entries in this contract are subject to Stellar's TTL expiry (~30 days without a bump). To prevent vesting data from expiring and locking beneficiary tokens, every mutating function extends the TTL of the entries it touches:
+
+| Function | Entries bumped |
+| :--- | :--- |
+| `create_schedule()` | `Schedule(id)`, `ScheduleCount` |
+| `claim()` | `Schedule(id)`, `Claimed(id)` |
+| `cancel()` | `Schedule(id)`, `Claimed(id)`, `VestedAtCancel(id)` |
+
+All bumps use a minimum threshold of **17 280 ledgers** (~1 day) and a target of **34 560 ledgers** (~2 days), matching the convention used by `forge-governor`, `forge-multisig`, and `forge-stream`.
+
+If a schedule is inactive for an extended period, an off-chain keeper or the beneficiary themselves should call `get_status()` (which does not bump TTL) and then `claim()` to refresh the TTL before expiry.
+
+---
+
 ## Known Limitations
 
 - **No pause/unpause** — schedules cannot be temporarily frozen. Use `forge-vesting` if pause support is required.
