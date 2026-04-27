@@ -53,6 +53,7 @@ pub mod error_codes {
         pub const NOTHING_TO_CLAIM: u32 = 4;
         pub const CANCELLED: u32 = 5;
         pub const INVALID_CONFIG: u32 = 6;
+        pub const VESTING_COMPLETE: u32 = 7;
     }
     
     pub mod governor {
