@@ -530,6 +530,9 @@ pub enum ContractError {
 
 ## �📜 Contract Details
 
+### forge-vesting-factory
+Manage multiple independent vesting schedules in a single deployment. Ideal for batch employee or advisor token grants without per-beneficiary contract deployments. See [`contracts/forge-vesting-factory/README.md`](contracts/forge-vesting-factory/README.md) for full details.
+
 ### forge-vesting
 Deploy tokens on a vesting schedule with an optional cliff period. Perfect for team allocations or advisor tokens.
 
@@ -864,6 +867,18 @@ These are safe and result in MINOR or PATCH bumps:
 ### Contract Independence
 
 Each contract in StellarForge is versioned independently. A breaking change in `forge-vesting` does not affect `forge-stream` versions.
+
+---
+
+## 🗺️ Roadmap
+
+| Status | Item | Description |
+| :--- | :--- | :--- |
+| ✅ Done | Seed script (`scripts/seed.sh`) | Idempotent script to deploy and initialize all contracts on a local or testnet network for local testing. |
+| 🚧 In Progress | Inline doc comments for `forge-stream` | Add comprehensive `///` documentation with examples to all public functions in `forge-stream`. |
+| 📅 Planned | Events for `forge-governor` and `forge-multisig` | Emit structured events on proposal creation, voting, approval, rejection, and execution to support off-chain indexing. |
+| 📅 Planned | `change_beneficiary` for `forge-vesting` | Allow the current beneficiary to transfer their vesting rights to a new address without admin involvement. |
+| 📅 Planned | Additional contract primitives | New primitives under consideration include a token-weighted escrow and a time-locked allowance contract. |
 
 ---
 

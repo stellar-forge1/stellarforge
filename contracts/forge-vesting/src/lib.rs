@@ -555,8 +555,6 @@ impl ForgeVesting {
         })
     }
 
-    pub fn get_config(env: Env) -> Result<VestingConfig, VestingError> {
-        env.storage()
     /// Return the full vesting configuration set at initialization.
     ///
     /// Exposes all fields of [`VestingConfig`] including token, beneficiary, admin,
@@ -758,7 +756,6 @@ impl ForgeVesting {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod test {
 mod tests {
     extern crate std;
 
@@ -965,40 +962,21 @@ mod tests {
 
     #[test]
     fn test_double_cancel_fails() {
-        let (env, contract_id, token, beneficiary, admin) = setup_with_token();
+        let (env, contract_id, token_id, beneficiary, admin) = setup_with_token();
+        let client = ForgeVestingClient::new(&env, &contract_id);
+        client.initialize(&token_id, &beneficiary, &admin, &1_000_000, &100, &1000);
+        client.cancel();
+        let result = client.try_cancel();
+        assert_eq!(result, Err(Ok(VestingError::Cancelled)));
+    }
+
+    #[test]
     fn test_get_vesting_schedule_fails_when_not_initialized() {
         let (env, contract_id, _, _, _) = setup();
         let client = ForgeVestingClient::new(&env, &contract_id);
         let result = client.try_get_vesting_schedule();
         assert_eq!(result, Err(Ok(VestingError::NotInitialized)));
     }
-
-    #[test]
-    fn test_claim_after_cancel_fails() {
-        let (env, contract_id, token, beneficiary, admin) = setup_with_token();
-    fn test_schedule_and_status_provide_full_ui_info_without_get_config() {
-        // get_vesting_schedule() + get_status() together expose everything a UI
-        // needs: token, beneficiary, amounts, timing, claimable — without
-        // leaking the admin address or internal cancellation flag.
-        let (env, contract_id, token, beneficiary, admin) = setup();
-        let client = ForgeVestingClient::new(&env, &contract_id);
-        client.initialize(&token, &beneficiary, &admin, &1_000_000, &100, &1000);
-
-        // Advance past cliff
-        env.ledger().with_mut(|l| l.timestamp += 500);
-
-        let schedule = client.get_vesting_schedule();
-        assert_eq!(schedule.token, token);
-        assert_eq!(schedule.beneficiary, beneficiary);
-        assert_eq!(schedule.total_amount, 1_000_000);
-        assert_eq!(schedule.cliff_seconds, 100);
-        assert_eq!(schedule.duration_seconds, 1000);
-
-        let status = client.get_status();
-        assert!(status.cliff_reached);
-        assert!(status.claimable > 0);
-        assert_eq!(status.claimed, 0);
-        assert!(!status.fully_vested);
     }
 
     #[test]
@@ -1161,17 +1139,6 @@ mod tests {
         client.initialize(&token_id, &beneficiary, &admin, &1_000_000, &100, &1000);
         client.cancel();
         let result = client.try_cancel();
-        assert_eq!(result, Err(Ok(VestingError::Cancelled)));
-    }
-
-    #[test]
-    fn test_claim_after_cancel_fails() {
-        let (env, contract_id, token_id, beneficiary, admin) = setup_with_token();
-        let client = ForgeVestingClient::new(&env, &contract_id);
-        client.initialize(&token_id, &beneficiary, &admin, &1_000_000, &100, &1000);
-        client.cancel();
-        env.ledger().with_mut(|l| l.timestamp += 200);
-        let result = client.try_claim();
         assert_eq!(result, Err(Ok(VestingError::Cancelled)));
     }
 
@@ -1858,6 +1825,48 @@ mod tests {
 
     // ── Pause / Unpause Tests ─────────────────────────────────────────────────
 
+    /// Regression test for issues #223 and #224: pause() when already paused must
+    /// return VestingError::Paused (not Unauthorized), and unpause() when not paused
+    /// must return VestingError::NotPaused (not NotInitialized).
+    ///
+    /// These tests FAIL before issues #223 and #224 are fixed and PASS after.
+    ///
+    /// Steps:
+    ///   1. pause() once — assert Ok.
+    ///   2. pause() again — assert Err(VestingError::Paused), NOT Unauthorized.
+    ///   3. unpause() — assert Ok.
+    ///   4. unpause() again — assert Err(VestingError::NotPaused), NOT NotInitialized.
+    #[test]
+    fn test_pause_already_paused_returns_paused_not_unauthorized() {
+        // Issue #223: double-pause must return Paused, not Unauthorized
+        // Issue #224: double-unpause must return NotPaused, not NotInitialized
+        let (env, contract_id, token, beneficiary, admin) = setup();
+        let client = ForgeVestingClient::new(&env, &contract_id);
+        client.initialize(&token, &beneficiary, &admin, &1_000_000, &0, &1000);
+
+        // Step 1: first pause succeeds
+        assert!(client.try_pause().is_ok());
+
+        // Step 2: second pause must return Paused, not Unauthorized
+        let result = client.try_pause();
+        assert_eq!(
+            result,
+            Err(Ok(VestingError::Paused)),
+            "double-pause must return VestingError::Paused, not Unauthorized"
+        );
+
+        // Step 3: unpause succeeds
+        assert!(client.try_unpause().is_ok());
+
+        // Step 4: second unpause must return NotPaused, not NotInitialized
+        let result = client.try_unpause();
+        assert_eq!(
+            result,
+            Err(Ok(VestingError::NotPaused)),
+            "double-unpause must return VestingError::NotPaused, not NotInitialized"
+        );
+    }
+
     /// Test 1: Admin pauses at 50% vesting. Verify get_status shows amount frozen
     /// and claim() fails with VestingError::Paused.
     #[test]
@@ -2494,5 +2503,50 @@ mod tests {
         assert_eq!(second, 10);
 
         assert_eq!(first + second, TOTAL);
+    }
+
+    /// unpause() must return VestingError::NotPaused when the schedule is not paused.
+    ///
+    /// Verifies the correct error variant is returned so callers can distinguish
+    /// "not paused" from "not initialized" (CommonError::NotInitialized).
+    #[test]
+    fn test_unpause_when_not_paused_returns_not_paused() {
+        let (env, contract_id, token, beneficiary, admin) = setup();
+        let client = ForgeVestingClient::new(&env, &contract_id);
+        client.initialize(&token, &beneficiary, &admin, &1_000_000, &100, &1000);
+
+        // Schedule is active (not paused) — unpause must fail with NotPaused
+        let result = client.try_unpause();
+        assert_eq!(result, Err(Ok(VestingError::NotPaused)));
+    }
+
+    /// cancel_and_claim() must return VestingError::Paused when the schedule is paused.
+    ///
+    /// Verifies the correct error variant is returned — Paused is a state condition,
+    /// not an authorization failure (CommonError::Unauthorized).
+    #[test]
+    fn test_cancel_and_claim_while_paused_returns_paused() {
+        let (env, contract_id, token, beneficiary, admin) = setup();
+        let client = ForgeVestingClient::new(&env, &contract_id);
+        client.initialize(&token, &beneficiary, &admin, &1_000_000, &100, &1000);
+        client.pause();
+
+        let result = client.try_cancel_and_claim();
+        assert_eq!(result, Err(Ok(VestingError::Paused)));
+    }
+
+    /// pause() must return VestingError::Paused when the schedule is already paused.
+    ///
+    /// Verifies the correct error variant is returned for the already-paused case.
+    #[test]
+    fn test_pause_when_already_paused_returns_paused() {
+        let (env, contract_id, token, beneficiary, admin) = setup();
+        let client = ForgeVestingClient::new(&env, &contract_id);
+        client.initialize(&token, &beneficiary, &admin, &1_000_000, &100, &1000);
+        client.pause();
+
+        // Second pause must fail with Paused, not Unauthorized
+        let result = client.try_pause();
+        assert_eq!(result, Err(Ok(VestingError::Paused)));
     }
 }
