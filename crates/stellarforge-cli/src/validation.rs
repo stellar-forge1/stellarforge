@@ -1,6 +1,7 @@
 /// Validation module for CLI input validation
 /// Provides validation functions for required fields and friendly error messages
 
+#[derive(Debug)]
 pub struct ValidationError {
     pub field: String,
     pub message: String,
