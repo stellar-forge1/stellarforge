@@ -1,5 +1,11 @@
 use std::env;
 
+mod validation;
+mod response;
+
+use validation::{Validator, ValidationError};
+use response::{ApiResponse, SimpleResponse};
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     
@@ -19,9 +25,15 @@ fn main() {
         "contracts" => {
             if args.len() > 2 && (args[2] == "--name" || args[2] == "-n") {
                 if args.len() > 3 {
+                    // Validate contract name
+                    if let Err(e) = Validator::valid_contract(&args[3]) {
+                        println!("{}", e.display());
+                        return;
+                    }
                     show_contract_info(&args[3]);
                 } else {
-                    println!("Error: --name requires a contract name");
+                    let response = SimpleResponse::error("--name requires a contract name");
+                    println!("{}", response.display());
                     println!("Usage: stellarforge contracts --name <contract_name>");
                 }
             } else {
@@ -70,7 +82,8 @@ fn main() {
         }
         "deploy" => {
             if args.len() < 3 {
-                println!("Error: deploy requires a contract type");
+                let response = SimpleResponse::error("deploy requires a contract type");
+                println!("{}", response.display());
                 println!("Usage: stellarforge deploy <contract_type> [options]");
                 return;
             }
@@ -90,6 +103,24 @@ fn main() {
                     _ => {}
                 }
                 i += 1;
+            }
+            
+            // Validate inputs
+            let mut errors = Vec::new();
+            
+            if let Err(e) = Validator::valid_contract(&contract_type) {
+                errors.push(e);
+            }
+            
+            if let Err(e) = Validator::valid_network(&network) {
+                errors.push(e);
+            }
+            
+            if !errors.is_empty() {
+                for error in errors {
+                    println!("{}", error.display());
+                }
+                return;
             }
             
             deploy_contract(contract_type, network);
@@ -330,10 +361,15 @@ fn show_contract_info(name: &str) {
 }
 
 fn build_contracts(contract: Option<String>, release: bool) {
-    println!("🔨 Building StellarForge Contracts");
+    let response = SimpleResponse::success("Building StellarForge Contracts");
+    println!("{}", response.display());
     println!();
     
     if let Some(contract_name) = contract {
+        if let Err(e) = Validator::valid_contract(&contract_name) {
+            println!("{}", e.display());
+            return;
+        }
         println!("Building contract: {}", contract_name);
     } else {
         println!("Building all contracts...");
@@ -352,10 +388,15 @@ fn build_contracts(contract: Option<String>, release: bool) {
 }
 
 fn test_contracts(contract: Option<String>) {
-    println!("🧪 Testing StellarForge Contracts");
+    let response = SimpleResponse::success("Testing StellarForge Contracts");
+    println!("{}", response.display());
     println!();
     
     if let Some(contract_name) = contract {
+        if let Err(e) = Validator::valid_contract(&contract_name) {
+            println!("{}", e.display());
+            return;
+        }
         println!("Testing contract: {}", contract_name);
     } else {
         println!("Testing all contracts...");
@@ -367,7 +408,8 @@ fn test_contracts(contract: Option<String>) {
 }
 
 fn deploy_contract(contract_type: String, network: String) {
-    println!("🚀 Deploying StellarForge Contract");
+    let response = SimpleResponse::success("Deploying StellarForge Contract");
+    println!("{}", response.display());
     println!();
     println!("Contract type: {}", contract_type);
     println!("Network: {}", network);
