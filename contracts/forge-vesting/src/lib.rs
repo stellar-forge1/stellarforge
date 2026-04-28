@@ -930,8 +930,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cancel_by_admin() {
+    fn test_get_vesting_schedule_returns_correct_params() {
         let (env, contract_id, token, beneficiary, admin) = setup_with_token();
+        let client = ForgeVestingClient::new(&env, &contract_id);
         client.initialize(&token, &beneficiary, &admin, &2_500_000, &200, &5000);
 
         let schedule = client.get_vesting_schedule();
@@ -976,7 +977,6 @@ mod tests {
         let client = ForgeVestingClient::new(&env, &contract_id);
         let result = client.try_get_vesting_schedule();
         assert_eq!(result, Err(Ok(VestingError::NotInitialized)));
-    }
     }
 
     #[test]
@@ -1133,16 +1133,6 @@ mod tests {
     }
 
     #[test]
-    fn test_double_cancel_fails() {
-        let (env, contract_id, token_id, beneficiary, admin) = setup_with_token();
-        let client = ForgeVestingClient::new(&env, &contract_id);
-        client.initialize(&token_id, &beneficiary, &admin, &1_000_000, &100, &1000);
-        client.cancel();
-        let result = client.try_cancel();
-        assert_eq!(result, Err(Ok(VestingError::Cancelled)));
-    }
-
-    #[test]
     fn test_fully_vested_after_duration() {
         let (env, contract_id, token, beneficiary, admin) = setup();
         let client = ForgeVestingClient::new(&env, &contract_id);
@@ -1197,23 +1187,6 @@ mod tests {
         let s = client.get_status();
         assert_eq!(s.claimed, 5_000);
         assert_eq!(s.claimable, 0);
-    }
-
-    fn setup_with_token() -> (Env, Address, Address, Address, Address) {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, ForgeVesting);
-        let token_admin = Address::generate(&env);
-        let token_id = env
-            .register_stellar_asset_contract_v2(token_admin)
-            .address();
-        let beneficiary = Address::generate(&env);
-        let admin = Address::generate(&env);
-        {
-            soroban_sdk::token::StellarAssetClient::new(&env, &token_id)
-                .mint(&contract_id, &1_000_000);
-        }
-        (env, contract_id, token_id, beneficiary, admin)
     }
 
     #[test]

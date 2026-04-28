@@ -1358,7 +1358,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_approval_count_tracks_lifecycle_through_execution() {
     fn test_get_approval_count_full_lifecycle_including_execution() {
         let env = Env::default();
         env.mock_all_auths();
