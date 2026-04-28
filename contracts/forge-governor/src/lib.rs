@@ -1303,6 +1303,68 @@ mod tests {
         assert_eq!(result, Err(Ok(GovernorError::InvalidWeight)));
     }
 
+    /// weight = -1 must return InvalidWeight without consuming the vote slot.
+    ///
+    /// Verifies that the weight <= 0 guard fires before the AlreadyVoted storage
+    /// write, so the voter can still cast a valid vote after the failed attempt.
+    #[test]
+    fn test_vote_negative_one_does_not_consume_vote_slot() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().with_mut(|l| l.timestamp = 0);
+        let (client, token_id) = setup_with_token(&env);
+
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        mint(&env, &token_id, &voter, 100);
+
+        let pid = client.propose(
+            &proposer,
+            &String::from_str(&env, "P"),
+            &String::from_str(&env, "D"),
+        );
+
+        // Attempt with weight = -1 must fail with InvalidWeight
+        let result = client.try_vote(&voter, &pid, &VoteDirection::For, &-1);
+        assert_eq!(result, Err(Ok(GovernorError::InvalidWeight)));
+
+        // Vote slot must NOT have been consumed — voter can still vote successfully
+        assert!(!client.has_voted(&pid, &voter));
+        client.vote(&voter, &pid, &VoteDirection::For, &100);
+        assert!(client.has_voted(&pid, &voter));
+    }
+
+    /// weight = 0 must return InvalidWeight without consuming the vote slot.
+    ///
+    /// A voter with 0 balance would pass the balance check (0 > 0 is false),
+    /// so the weight <= 0 guard must fire first to prevent slot consumption.
+    #[test]
+    fn test_vote_zero_weight_does_not_consume_vote_slot() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().with_mut(|l| l.timestamp = 0);
+        let (client, token_id) = setup_with_token(&env);
+
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        mint(&env, &token_id, &voter, 50);
+
+        let pid = client.propose(
+            &proposer,
+            &String::from_str(&env, "P"),
+            &String::from_str(&env, "D"),
+        );
+
+        // Attempt with weight = 0 must fail with InvalidWeight
+        let result = client.try_vote(&voter, &pid, &VoteDirection::For, &0);
+        assert_eq!(result, Err(Ok(GovernorError::InvalidWeight)));
+
+        // Vote slot must NOT have been consumed — voter can still vote successfully
+        assert!(!client.has_voted(&pid, &voter));
+        client.vote(&voter, &pid, &VoteDirection::For, &50);
+        assert!(client.has_voted(&pid, &voter));
+    }
+
     #[test]
     fn test_get_proposal_existing() {
         let env = Env::default();
@@ -3210,6 +3272,76 @@ mod tests {
         let state = client.finalize(&pid);
         assert_eq!(state, ProposalState::Passed);
         assert_eq!(client.get_proposal_state(&pid), ProposalState::Passed);
+    }
+
+    /// Votes totalling exactly the quorum threshold must cause the proposal to pass.
+    ///
+    /// The finalize condition is `total_votes >= quorum && votes_for > votes_against`.
+    /// This test pins the boundary: total_votes == quorum (100) with a yes majority.
+    #[test]
+    fn test_finalize_votes_exactly_equal_quorum_passes() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().with_mut(|l| l.timestamp = 0);
+        let (client, token_id) = setup_with_token(&env); // quorum = 100, voting_period = 3600
+
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        mint(&env, &token_id, &voter, 100);
+
+        let pid = client.propose(
+            &proposer,
+            &String::from_str(&env, "Exact quorum boundary"),
+            &String::from_str(&env, "total_votes == quorum"),
+        );
+
+        // Cast exactly quorum votes in favour
+        client.vote(&voter, &pid, &VoteDirection::For, &100);
+
+        env.ledger().with_mut(|l| l.timestamp = 5000);
+        let state = client.finalize(&pid);
+
+        assert_eq!(
+            state,
+            ProposalState::Passed,
+            "proposal must pass when total_votes == quorum and yes majority holds"
+        );
+        assert_eq!(client.get_proposal(&pid).state, ProposalState::Passed);
+    }
+
+    /// One vote below the quorum threshold must cause the proposal to fail.
+    ///
+    /// total_votes == quorum - 1 (99) does not satisfy `total_votes >= quorum`,
+    /// so the proposal must resolve to Failed regardless of the vote direction.
+    #[test]
+    fn test_finalize_votes_one_below_quorum_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().with_mut(|l| l.timestamp = 0);
+        let (client, token_id) = setup_with_token(&env); // quorum = 100, voting_period = 3600
+
+        let proposer = Address::generate(&env);
+        let voter = Address::generate(&env);
+        mint(&env, &token_id, &voter, 99);
+
+        let pid = client.propose(
+            &proposer,
+            &String::from_str(&env, "One below quorum boundary"),
+            &String::from_str(&env, "total_votes == quorum - 1"),
+        );
+
+        // Cast quorum - 1 votes in favour
+        client.vote(&voter, &pid, &VoteDirection::For, &99);
+
+        env.ledger().with_mut(|l| l.timestamp = 5000);
+        let state = client.finalize(&pid);
+
+        assert_eq!(
+            state,
+            ProposalState::Failed,
+            "proposal must fail when total_votes == quorum - 1"
+        );
+        assert_eq!(client.get_proposal(&pid).state, ProposalState::Failed);
     }
 
     /// Test finalize() compatibility with cancel_proposal() workflow

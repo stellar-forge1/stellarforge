@@ -1370,21 +1370,14 @@ mod tests {
         let o3 = Address::generate(&env);
         client.initialize(&vec![&env, o1.clone(), o2.clone(), o3.clone()], &3, &3600);
 
-        let token_id = env
-            .register_stellar_asset_contract_v2(Address::generate(&env))
-            .address();
-        soroban_sdk::token::StellarAssetClient::new(&env, &token_id).mint(&contract_id, &500);
-        let recipient = Address::generate(&env);
-
-        assert_eq!(client.get_approval_count(&999), 0);
-
-        let pid = client.propose(&o1, &recipient, &token_id, &500);
         let token_admin = Address::generate(&env);
         let token_id = env
             .register_stellar_asset_contract_v2(token_admin)
             .address();
         let to = Address::generate(&env);
         soroban_sdk::token::StellarAssetClient::new(&env, &token_id).mint(&contract_id, &500);
+
+        assert_eq!(client.get_approval_count(&999), 0);
 
         let pid = client.propose(&o1, &to, &token_id, &500);
         assert_eq!(client.get_approval_count(&pid), 1);

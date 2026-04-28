@@ -68,6 +68,9 @@ pub enum FactoryError {
     NothingToClaim = 4,
     Cancelled = 5,
     InvalidConfig = 6,
+    /// Returned by `cancel()` when the schedule has already fully vested.
+    /// Mirrors `VestingError::VestingComplete` in forge-vesting for consistency.
+    VestingComplete = 7,
 }
 
 // ── Contract ──────────────────────────────────────────────────────────────────
@@ -249,6 +252,12 @@ impl ForgeVestingFactory {
         }
 
         let now = env.ledger().timestamp();
+        let elapsed = now.saturating_sub(config.start_time);
+
+        if elapsed >= config.duration_seconds {
+            return Err(FactoryError::VestingComplete);
+        }
+
         let vested = Self::compute_vested(&config, now);
         let claimed: i128 = env
             .storage()
@@ -392,6 +401,14 @@ impl ForgeVestingFactory {
     /// ```text
     /// vested = total_amount × elapsed / duration
     /// ```
+    ///
+    /// # Note on cancellation
+    ///
+    /// This function must **not** be called after a schedule is cancelled to
+    /// determine the historical vested amount. Instead, the vested amount at
+    /// cancel time is stored in `DataKey::VestedAtCancel(id)` and read by
+    /// `get_status()`. This mirrors the behaviour of forge-vesting which stores
+    /// `VestedAtCancel` to avoid returning 0 for cancelled schedules.
     ///
     /// # Returns
     ///
@@ -979,6 +996,27 @@ mod tests {
         env.mock_auths(&[]);
         let result = client.try_claim(&id);
         assert!(result.is_err(), "non-beneficiary must not be able to claim");
+    }
+
+    /// cancel() on a fully vested schedule reverts with VestingComplete.
+    /// Mirrors forge-vesting behaviour for consistency (issue #498).
+    #[test]
+    fn test_cancel_fully_vested_reverts_with_vesting_complete() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().with_mut(|l| l.timestamp = 0);
+        let client = make_client(&env);
+        let admin = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let token = setup_token(&env, &admin, 1_000);
+
+        let id = client.create_schedule(&token, &beneficiary, &admin, &1_000, &0, &1_000);
+
+        // Advance past full duration — schedule is 100% vested
+        env.ledger().with_mut(|l| l.timestamp = 1_000);
+
+        let err = client.try_cancel(&id).unwrap_err();
+        assert_eq!(err, Ok(FactoryError::VestingComplete));
     }
 
     /// Second cancel() call after a partial failure cannot double-pay the beneficiary.
