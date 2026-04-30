@@ -3,7 +3,7 @@ use std::env;
 mod validation;
 mod response;
 
-use validation::{Validator, ValidationError};
+use validation::Validator;
 use response::{ApiResponse, SimpleResponse};
 
 fn main() {
@@ -143,6 +143,9 @@ fn main() {
             }
             
             quickstart(path);
+        }
+        "health" => {
+            health_check();
         }
         "--version" | "-V" => {
             println!("stellarforge 0.1.0");
@@ -446,4 +449,17 @@ fn quickstart(path: Option<String>) {
     println!("TEST:");
     println!("  make test");
     println!("  # or: cargo test --workspace");
+}
+
+fn health_check() {
+    use response::HealthStatus;
+
+    let health = HealthStatus {
+        status: "ok".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        service: "stellarforge-cli".to_string(),
+    };
+
+    let response = ApiResponse::success(health, "Health check passed");
+    println!("{}", response.display());
 }

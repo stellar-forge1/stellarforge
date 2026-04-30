@@ -136,3 +136,52 @@ mod tests {
         assert!(response.error.is_some());
     }
 }
+
+/// Health status data for the health check endpoint
+#[derive(Debug, Clone)]
+pub struct HealthStatus {
+    pub status: String,
+    pub version: String,
+    pub service: String,
+}
+
+impl fmt::Display for HealthStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "service: {}, version: {}, status: {}",
+            self.service, self.version, self.status
+        )
+    }
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::*;
+
+    #[test]
+    fn test_health_status_display() {
+        let health = HealthStatus {
+            status: "ok".to_string(),
+            version: "0.1.0".to_string(),
+            service: "stellarforge-cli".to_string(),
+        };
+        let display = format!("{}", health);
+        assert!(display.contains("ok"));
+        assert!(display.contains("stellarforge-cli"));
+    }
+
+    #[test]
+    fn test_health_check_response() {
+        let health = HealthStatus {
+            status: "ok".to_string(),
+            version: "0.1.0".to_string(),
+            service: "stellarforge-cli".to_string(),
+        };
+        let response = ApiResponse::success(health, "Health check passed");
+        assert_eq!(response.status, ResponseStatus::Success);
+        assert!(response.data.is_some());
+        assert!(response.error.is_none());
+        assert_eq!(response.message, "Health check passed");
+    }
+}
