@@ -1,3 +1,5 @@
+![StellarForge](./stellarforge-banner.png)
+
 # ⚒️ StellarForge
 
 **Reusable Soroban smart contract primitives for the Stellar ecosystem.**
